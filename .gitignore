@@ -5,3 +5,4 @@ dist
 venv
 test.spec
 secret.py
+video-checker.spec
