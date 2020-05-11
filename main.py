@@ -8,11 +8,12 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from secrets import username, userpass
+import datetime
+import time
 
-form_class = uic.loadUiType("e-learning-checker.ui")[0]
+form_class = uic.loadUiType("output.ui")[0]
 
 
-# 화면을 띄우는데 사용되는 Class 선언
 class WindowClass(QMainWindow, form_class):
     def __init__(self):
         super().__init__()
@@ -23,22 +24,41 @@ class WindowClass(QMainWindow, form_class):
         self.driver.get(self.URL)
 
         # signal
-        self.notice_btn.clicked.connect(self.login)
+        self.login_btn.clicked.connect(self.login)
 
-    def get_notice(self):
+    def get_data(self):
         try:
+            # 공지사항- 입장
             notice = WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.XPATH, "//*[@id='leftSnb']/li[4]/a"))
             )
             notice.click()
-            html = self.driver.page_source
-            soup = BeautifulSoup(html, "html.parser")
-            notice_list = soup.find_all("td", {"class": "ta_l"})
-            for one in notice_list:
-                self.allList.append(one.get_text().split("(")[0].strip())
-            print(self.allList)
-            for i in range(len(self.allList)):
-                self.notice_list.addItem(self.allList[i])
+
+            # 등록일 확인(7일 이내)
+            list_counts = self.driver.find_elements_by_css_selector("tbody > tr")
+            for i in range(len(list_counts)):
+                post_date = self.driver.find_element_by_xpath(f"//*[@id='con']/table/tbody/tr[{i+1}]/td[5]").text.split(".")
+                time_post = datetime.datetime(int(post_date[0]), int(post_date[1]), int(post_date[2]))
+                time_now = datetime.datetime.now()
+
+                # 7일 이내의 공지사항은 들어가서 정보를 확인함.
+                if (time_now - time_post).days < 7:
+                    self.driver.find_elements_by_name("btn_board_view")[i].click()
+                    WebDriverWait(self.driver, 10).until(
+                        EC.presence_of_element_located((By.ID, "td_boarditem_title"))
+                    )
+                    html = self.driver.page_source
+                    soup = BeautifulSoup(html, "html.parser")
+                    notice_title = soup.find(id="td_boarditem_title").get_text().strip()
+                    notice_date = soup.find(id="td_f_insert_dt").get_text().strip()
+                    notice_eye = soup.find(id="td_boarditem_viewcnt").get_text().strip()
+                    notice_content = soup.find(id="td_boarditem_content").get_text().strip()
+                    self.notice_text.append(notice_title)
+                    self.notice_text.append(notice_date)
+                    self.notice_text.append(notice_eye)
+                    self.notice_text.append(notice_content)
+                    self.driver.find_element_by_xpath("//*[@id='leftSnb']/li[4]/a").click()
+
             self.driver.find_element_by_xpath("//*[@id='gnbmenu']/ul/li[3]/a").click()
 
         except Exception as e:
@@ -60,13 +80,12 @@ class WindowClass(QMainWindow, form_class):
             )
             enter_class = self.driver.find_elements_by_css_selector("a.classin2")
             for i in range(len(enter_class)):
+                # 과목 목록에 있는 애들을 하나하나 다 들어가봄.
                 enter_class = self.driver.find_elements_by_css_selector("a.classin2")
                 enter_class[i].click()
-                self.allList=[]
-                self.allList.append(enter_class[i].text.split("[")[0].strip())
-                self.get_notice()
 
-
+                # 해당 과목의 정보를 받아옴.
+                self.get_data()
 
         except Exception as e:
             print("loop course error")
