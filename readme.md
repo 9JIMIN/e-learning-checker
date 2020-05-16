@@ -1,4 +1,4 @@
-# e-learning-checker
+# Lazy-student
 
 Because of corona virus, this semester is full online. the problem is each course has different update pattern. so hard to know all at once. And I just happen to learn about web scraping and thought using this method, I can make this thing a lot more easier.
 
