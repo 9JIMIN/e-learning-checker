@@ -1,304 +1,168 @@
-import sys
-from PyQt5.QtWidgets import *
-from PyQt5 import uic
-
-from bs4 import BeautifulSoup
+import requests
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+import lxml
+from bs4 import BeautifulSoup
 from secrets import username, userpass
-import datetime
-import pprint
 import time
 
-form_class = uic.loadUiType("output.ui")[0]
+
+class Content:
+    def __init__(self, subject, title, date, content):
+        self.subject = subject
+        self.title = title
+        self.date = date
+        self.content = content
 
 
-class WindowClass(QMainWindow, form_class):
-    def __init__(self):
-        super().__init__()
-        # tools
-        self.setupUi(self)
-        self.PATH = "C:\Program Files (x86)\chromedriver.exe"
-        self.URL = "https://e-campus.gnu.ac.kr/main/MainView.dunet"
-        self.driver = webdriver.Chrome(self.PATH)
-        self.driver.get(self.URL)
+class Crawler:
 
-        # data
-        self.notice_list = []
-        self.task_list = []
-        self.data_list = []
-        self.video_list = []
-
-        # signals
-        self.login_btn.clicked.connect(self.login)
-
-    def get_data(self):
+    def cookies(self, url):
+        """ 
+        url을 받아서, 로그인을 한다. 
+        쿠키를 리턴한다.
+        """
         try:
-            # 1. 과제제출
-            # 과목 현황판이 로딩될때까지 기다림. 이거 왜 안되지??
-            WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.ID, "con"))
-            )
-            # 로딩되면, 거기서 lenAct_list를 가져옴- 없으면 finally로 다음 정보받으러감.
-            try:
-                overview_list = self.driver.find_elements_by_class_name("lenAct_list")\
-                    # 해당 클래스에서 과제만 골라냄.
-                filtered = []
-                for el in overview_list:
-                    if el.find_element_by_css_selector("div.len_icon > img").get_attribute(
-                            "src") == "http://e-campus.gnu.ac.kr/images/classroom/main/icon_learn02_homework.gif":
-                        filtered.append(el)
+            driver = webdriver.Chrome(
+                "C:\Program Files (x86)\chromedriver.exe")
+            driver.get(url)
+            driver.execute_script(
+                "document.getElementById('loginArea').style.display='block'")
 
-                # 골라낸 과제를 클래스에서 삭제함 -> 강의목록이 됨.
-                for el in filtered:
-                    overview_list.remove(el)
+            driver.find_element_by_id("id").clear()
+            driver.find_element_by_id("id").send_keys(username)
 
-                # lenAct_list로 불러온 요소들을 과제와 강의 목록으로 나눴음.
-                videos = overview_list
-                tasks = filtered
+            driver.find_element_by_id("pass").clear()
+            driver.find_element_by_id("pass").send_keys(userpass)
 
-                # 과제리스트에 있는 애들중에서 '미제출' 상태인 애들을 골라내고 클릭을 함.
-                for el in tasks:
-                    if el.find_element_by_css_selector("dd.lec_dotline").text.strip() == "미제출":
-                        el.find_element_by_css_selector(
-                            "div.btn_lecture_view > a").click()
+            driver.find_element_by_id("login_img").click()
 
-                        # 과제 정보가 로딩될때까지 기다림
-                        WebDriverWait(self.driver, 10).until(
-                            EC.presence_of_element_located(
-                                (By.XPATH, "//*[@id='pop_frm_form']/table[1]"))
-                        )
-
-                        # 과제정보를 받아서 dict을 채움, 그걸 리스트에 추가
-                        task_el = {"class": self.driver.find_element_by_xpath("//*[@id='pop_frm_form']/p[1]").text.strip(),
-                                   "title": self.driver.find_element_by_xpath("//*[@id='pop_frm_form']/table[1]/tbody/tr[1]/td").text.strip(),
-                                   "content": self.driver.find_element_by_xpath("//*[@id='pop_frm_form']/table[1]/tbody/tr[2]/td").text.strip(),
-                                   "date": self.driver.find_element_by_xpath("//*[@id='pop_frm_form']/table[1]/tbody/tr[3]/td").text.strip()}
-                        self.task_list.append(task_el)
-
-                        self.driver.find_element_by_xpath(
-                            "//*[@id='leftSnb']/li[7]/a").click()
-                        time.sleep(1)
-
-            # len_Act가 있던 없던, 과목창으로 돌아옴.
-            finally:
-                self.driver.find_element_by_xpath(
-                    "//*[@id='leftSnb']/li[1]/a").click()
-                print("과제 가져오기 끝")
-
-            # 2. 자료실
-
-            # 자료실 버튼을 로딩 기다렸다가 클릭한다.
-            WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located(
-                    (By.XPATH, "//*[@id='leftSnb']/li[5]/a"))
-            ).click()
-
-            # 자료내용 로딩을 기다림.
-            WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located(
-                    (By.XPATH, "//*[@id='leftSnb']/li[5]/a"))
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.ID, "utill"))
             )
 
-            # 최신 게시물만 찾음.
-            list_counts = self.driver.find_elements_by_css_selector(
-                "tbody > tr")
-            print(list_counts[0].text)
-            if list_counts[0].text.strip() != "등록된 게시물이 없습니다.":
-                for i in range(len(list_counts)):
-                    post_date = self.driver.find_element_by_xpath(
-                        f"//*[@id='con']/table/tbody/tr[{i + 1}]/td[5]").text.split(".")
-                    time_post = datetime.datetime(
-                        int(post_date[0]), int(post_date[1]), int(post_date[2]))
-                    time_now = datetime.datetime.now()
-
-                    # 7일 이내의 자료는 들어가서 정보를 확인함.
-                    if (time_now - time_post).days < 7:
-                        self.driver.find_elements_by_name(
-                            "btn_board_view")[i].click()
-                        WebDriverWait(self.driver, 10).until(
-                            EC.presence_of_element_located(
-                                (By.ID, "td_boarditem_title"))
-                        )
-                        # html 정보 파싱
-                        html = self.driver.page_source
-                        soup = BeautifulSoup(html, "html.parser")
-
-                        # 파싱된 정보 저장
-                        data_el = {"title": soup.find(id="td_boarditem_title").get_text().strip(),
-                                   "date": soup.find(id="td_f_insert_dt").get_text().strip(),
-                                   "views": soup.find(id="td_boarditem_viewcnt").get_text().strip(),
-                                   "content": soup.find(id="td_boarditem_content").get_text().strip()}
-                        self.data_list.append(data_el)
-
-                        # 다시 자료실로 돌아감-> 반복
-                        self.driver.find_element_by_xpath(
-                            "//*[@id='leftSnb']/li[4]/a").click()
-
-            # 자료실 다 확인하면 강의홈으로
-            self.driver.find_element_by_xpath(
-                "//*[@id='leftSnb']/li[1]/a").click()
-
-            # 3. 공지사항- 입장
-            notice = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located(
-                    (By.XPATH, "//*[@id='leftSnb']/li[4]/a"))
-            )
-            notice.click()
-
-            # 등록일 확인(7일 이내)
-            list_counts = self.driver.find_elements_by_css_selector(
-                "tbody > tr")
-            for i in range(len(list_counts)):
-                post_date = self.driver.find_element_by_xpath(
-                    f"//*[@id='con']/table/tbody/tr[{i+1}]/td[5]").text.split(".")
-                time_post = datetime.datetime(
-                    int(post_date[0]), int(post_date[1]), int(post_date[2]))
-                time_now = datetime.datetime.now()
-
-                # 7일 이내의 공지사항은 들어가서 정보를 확인함.
-                if (time_now - time_post).days < 7:
-                    self.driver.find_elements_by_name(
-                        "btn_board_view")[i].click()
-                    WebDriverWait(self.driver, 10).until(
-                        EC.presence_of_element_located(
-                            (By.ID, "td_boarditem_title"))
-                    )
-                    # html 정보 파싱
-                    html = self.driver.page_source
-                    soup = BeautifulSoup(html, "html.parser")
-
-                    # 파싱된 정보 저장
-                    notice_el = {"title": soup.find(id="td_boarditem_title").get_text().strip(),
-                                 "date": soup.find(id="td_f_insert_dt").get_text().strip(),
-                                 "views": soup.find(id="td_boarditem_viewcnt").get_text().strip(),
-                                 "content": soup.find(id="td_boarditem_content").get_text().strip()}
-                    self.notice_list.append(notice_el)
-
-                    # 다시 공지창으로 돌아감-> 반복
-                    self.driver.find_element_by_xpath(
-                        "//*[@id='leftSnb']/li[4]/a").click()
-
-            # 공지사항을 다 확인하면 다시 전체과목창으로 돌아감.-> 그리고 다른 과목 공지확인인
-            self.driver.find_element_by_xpath(
-                "//*[@id='gnbmenu']/ul/li[3]/a").click()
+            return driver.get_cookies()
 
         except Exception as e:
-            print("get data error")
-            print(str(e))
-            self.driver.quit()
+            print("*********** login error ***********\n"+e)
 
-    def loop_class(self):
+    def session(self, cookie_list):
+        """ 
+        쿠키를 받아서, 
+        세션 객체를 리턴한다.
+        """
         try:
-            # 로그인 버튼을 누른후에 왼쪽바 로딩되는거를 기다림, 마이페이지 클릭
-            WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.ID, "btn_change_info"))
-            )
-            self.driver.find_element_by_xpath(
-                "//*[@id='gnbmenu']/ul/li[3]/a").click()
-
-            # 마이페이지에서 강의목록란이 로딩될때까지 기다림
-            WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.ID, "rows1"))
-            )
-
-            # 모든 수업의 "강의실 입장" 링크 요소를 저장
-            my_classes = self.driver.find_elements_by_css_selector(
-                "a.classin2")
-
-            # 링크를 하나씩 타고 들어가봄.
-            for i in range(len(my_classes)):
-                my_classes = self.driver.find_elements_by_css_selector(
-                    "a.classin2")
-                my_classes[i].click()
-
-                # 해당 과목의 정보를 받아옴.
-                self.get_data()
-
-            # 정렬된 공지 리스트를 콘솔에 출력
-            # pp = pprint.PrettyPrinter().pprint
-            # pp(self.notice_list)
-            # print(len(self.notice_list))
-
-            # 받아온 전체 공지, 자료를 날짜 순으로 정렬
-            self.notice_list = sorted(
-                self.notice_list, key=lambda i: i['date'], reverse=True)
-            self.data_list = sorted(
-                self.data_list, key=lambda i: i["date"], reverse=True)
-            self.task_list = sorted(
-                self.task_list, key=lambda i: i["date"], reverse=True)
-
-            # 받아온 공지 정보로 Qt에 위젯 생성
-            for notice in self.notice_list:
-                self.notice_text.append(notice["date"])
-                self.notice_text.append(notice["views"])
-                self.notice_text.append(notice["title"])
-                self.notice_text.append(notice["content"])
-                self.notice_text.append("-----------------")
-
-            # 자료실 정보
-            for data in self.data_list:
-                self.data_text.append(data["date"])
-                self.data_text.append(data["views"])
-                self.data_text.append(data["title"])
-                self.data_text.append(data["content"])
-                self.data_text.append("-----------------")
-
-            # 과제 정보
-            for task in self.task_list:
-                self.task_text.append(task["date"])
-                self.task_text.append(task["class"])
-                self.task_text.append(task["title"])
-                self.task_text.append(task["content"])
-                self.task_text.append("-----------------")
+            with requests.Session() as session:
+                headers = {
+                    "User-Agent":
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Safari/537.36"
+                }
+                session.headers.update(headers)
+                session.cookies.update({c["name"]: c["value"]
+                                        for c in cookie_list})
+            return session
 
         except Exception as e:
-            print("loop course error")
-            print(str(e))
-            self.driver.quit()
+            print("*********** session error ***********\n"+e)
 
-    def login(self):
+    def lectureData(self, session):
+        """ 
+        세션을 받아서, 
+        전체 강의 id, no의 list를 리턴한다.
+        """
         try:
-            # explicit wait and login button click
-            login_link = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.ID, "pop_login"))
-            )
-            login_link.click()
+            html = session.get(
+                "http://e-campus.gnu.ac.kr/lms/myLecture/doListView.dunet")
+            soup = BeautifulSoup(html.content, "lxml")
+            class_list = soup.find_all("a", {"class": "classin2"})
 
-            # send user ID, PW
-            user_id = self.driver.find_element_by_id("id")
-            user_id.send_keys(username)
-            user_pw = self.driver.find_element_by_id("pass")
-            user_pw.send_keys(userpass)
+            data = []
+            for i in class_list:
+                course_id = i.attrs["course_id"]
+                class_no = i.attrs["class_no"]
+                data.append([course_id, class_no])
 
-            # close popup which block login button
-            try:
-                self.driver.find_element_by_name(
-                    "btn_layer_popup_close").click()
-
-            finally:
-                # login
-                self.driver.find_element_by_id("login_img").click()
-
-                self.loop_class()
+            return data
 
         except Exception as e:
-            print("login error")
-            print(str(e))
-            self.driver.quit()
+            print("lectureData error\n"+e)
+
+    def notice(self, session, data_list):
+        """
+        강의별 데이터를 가지고, 
+        공지사항전체를 리턴한다.
+        """
+        try:
+            notice_list = []
+            for i in data_list:
+                form = {
+                    "course_id": i[0],
+                    "class_no": i[1]
+                }
+                html = session.post(
+                    "http://e-campus.gnu.ac.kr/lms/class/classroom/doViewClassRoom_new.dunet", data=form)
+                soup = BeautifulSoup(html.content, "lxml")
+
+                form = {
+                    "mnid": soup.select("ul#leftSnb > li")[3].find(
+                        "input", {"name": "mnid"}).attrs["value"],
+                    "board_no": soup.select("ul#leftSnb > li")[3].find(
+                        "input", {"name": "board_no"}).attrs["value"]
+                }
+                html = session.post(
+                    "http://e-campus.gnu.ac.kr/lms/class/boardItem/doListView.dunet", data=form)
+                soup = BeautifulSoup(html.content, "lxml")
+
+                notice = soup.select("td.ta_l >a")
+                for n in notice:
+                    notice_list.append(n.text.split("(")[0].strip())
+            return notice_list
+
+        except Exception as e:
+            print("notice error\n"+e)
+
+    def homework(self, session, data_list):
+        """
+        강의별 데이터를 가지고, 
+        과제 전체를 리턴한다.
+        """
+        try:
+            homework_list = []
+            for i in data_list:
+                form = {
+                    "course_id": i[0],
+                    "class_no": i[1]
+                }
+                html = session.post(
+                    "http://e-campus.gnu.ac.kr/lms/class/classroom/doViewClassRoom_new.dunet", data=form)
+                soup = BeautifulSoup(html.content, "lxml")
+
+                form = {
+                    "mnid": soup.select("ul#leftSnb > li")[3].find(
+                        "input", {"name": "mnid"}).attrs["value"]
+                }
+                html = session.post(
+                    "http://e-campus.gnu.ac.kr/lms/class/report/stud/doListView.dunet", data=form)
+                soup = BeautifulSoup(html.content, "lxml")
+
+                task = soup.select("td.ta_l")
+                for t in task:
+                    homework_list.append(t.text.strip())
+            return homework_list
+
+        except Exception as e:
+            print("homework error\n"+e)
 
 
-if __name__ == "__main__":
-    # QApplication : 프로그램을 실행시켜주는 클래스
-    app = QApplication(sys.argv)
+crawler = Crawler()
 
-    # WindowClass의 인스턴스 생성
-    myWindow = WindowClass()
-
-    # 프로그램 화면을 보여주는 코드
-    myWindow.show()
-
-    # 프로그램을 이벤트루프로 진입시키는(프로그램을 작동시키는) 코드
-    app.exec_()
+cookies = crawler.cookies("http://e-campus.gnu.ac.kr/main/MainView.dunet")
+session = crawler.session(cookies)
+lecture_list = crawler.lectureData(session)
+print(lecture_list)
+notice_list = crawler.notice(session, lecture_list)
+print(notice_list)
+homework_list = crawler.homework(session, lecture_list)
+print(homework_list)

@@ -1,5 +1,6 @@
-/venv/
-.idea
-secrets.py
+venv
+tutorial
+.vscode
 __pycache__
-/output.ui
+
+secretes.py
