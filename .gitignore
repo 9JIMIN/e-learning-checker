@@ -2,5 +2,7 @@ venv
 tutorial
 .vscode
 __pycache__
-
+build
+dist
+main.spec
 secrets.py
