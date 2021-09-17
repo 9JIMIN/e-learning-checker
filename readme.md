@@ -1,7 +1,5 @@
 # Lazy-student
 
-한국어 [https://9jimin.tistory.com/37](https://9jimin.tistory.com/37)
-
 Because of corona virus, this semester is full online. the problem is each course has different update pattern. so hard to know all at once. And I just happen to learn about web scraping and thought.. using this method, I can make this thing a lot more easier.
 
 ## project process
